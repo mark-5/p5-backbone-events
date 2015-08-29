@@ -42,4 +42,23 @@ use Test::Backbone::Events::Utils;
     is $count, 1, 'callback triggered once once listener with shared callback is removed';
 }
 
+{
+    my $listener = test_handler();
+    my $handler1 = test_handler();
+    my $handler2 = test_handler();
+
+    my $count = 0;
+    my $cb = sub { $count++ };
+
+    $listener->listen_to($handler1, 'all', $cb);
+    $listener->listen_to($handler2, 'all', $cb);
+    $_->trigger('event') for $handler1, $handler2;
+    is $count, 2, 'callbacks triggered twice when listening to two objects';
+
+    $count = 0;
+    $listener->stop_listening($handler2);
+    $_->trigger('event') for $handler1, $handler2;
+    is $count, 1, 'callbacks triggered once after listening stopped for one object';
+}
+
 done_testing;

@@ -23,4 +23,10 @@ $handler->off('test-event');
 $handler->trigger('test-event');
 ok !%triggered, 'skipped all callbacks after calling off with only event name';
 
+%triggered = ();
+$handler->on('test-event', $first);
+$handler->off();
+$handler->trigger('test-event');
+ok !%triggered, 'skipped all callbacks after calling off with no arguments';
+
 done_testing;

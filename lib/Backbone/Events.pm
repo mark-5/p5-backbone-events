@@ -79,7 +79,7 @@ sub _bbe_trigger {
 sub __bbe_wrap_multiple_events {
     my ($orig, $self, $events, @args) = @_;
     if (ref $events eq 'HASH') {
-        $self->$orig($events->{$_}, @args) for keys %$events;
+        $self->$orig($_, $events->{$_}, @args) for keys %$events;
     } elsif ($events and $events =~ /\s+/) {
         my $result;
         $result = $self->$orig($_, @args) for split /\s+/, $events;
@@ -93,7 +93,7 @@ sub __bbe_wrap_multiple_events {
 sub ___bbe_wrap_multiple_events2 {
     my ($orig, $self, $other, $events, @args) = @_;
     if (ref $events eq 'HASH') {
-        $self->$orig($other, $events->{$_}, @args) for keys %$events;
+        $self->$orig($other, $_, $events->{$_}, @args) for keys %$events;
     } elsif ($events and $events =~ /\s+/) {
         my $result;
         $result = $self->$orig($other, $_, @args) for split /\s+/, $events;
