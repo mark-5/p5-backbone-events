@@ -1,17 +1,20 @@
 package Backbone::Events;
 
+use Carp qw(confess);
+use List::MoreUtils qw(none);
+use Scalar::Util qw(blessed);
 use Moo::Role;
-use namespace::autoclean -also => qr/^_bbe_parse_events/;
+use namespace::autoclean -also => qr/^__bbe_/;
 
 # ABSTRACT: a port of the Backbone.js event API
 
 =head1 SYNOPSIS
 
-    package EventBus {
+    package MyEventBus {
         use Moo;
         with 'Backbone::Events';
     };
-    my $bus = EventBus->new;
+    my $bus = MyEventBus->new;
 
     $bus->on('event:subtype', \&do_something);
     ...
@@ -19,19 +22,19 @@ use namespace::autoclean -also => qr/^_bbe_parse_events/;
 
 =head1 METHODS
 
-=head2 on
+=head2 on($event, $callback)
 
-=head2 off
+=head2 off([$event], [$callback])
 
-=head2 trigger
+=head2 trigger($event, @args)
 
-=head2 once
+=head2 once($event, $callback)
 
-=head2 listen_to
+=head2 listen_to($other, $event, $callback)
 
-=head2 stop_listening
+=head2 stop_listening([$other], [$event], [$callback])
 
-=head2 listen_to_once
+=head2 listen_to_once($other, $event, $callback)
 
 =head1 SEE ALSO
 
@@ -44,21 +47,36 @@ has _bbe_events => (
     default => sub { {} },
 );
 
+has _bbe_id => (
+    is      => 'ro',
+    default => sub { __bbe_new_id() },
+);
+
 has _bbe_listening_to => (
     is      => 'ro',
     default => sub { {} },
 );
 
+our $__bbe_last_id;
+sub __bbe_new_id { ++$__bbe_last_id }
+
 sub _bbe_trigger {
-    my ($self, $event_ref, @args) = @_;
+    my ($self, $event_ref, $event, @args) = @_;
     my $cb = $event_ref->{cb};
 
-    $cb->(@args);
+    if ($event_ref->{ns} eq 'all') {
+        $cb->($event, @args);
+    } else {
+        $cb->(@args);
+    }
 
-    $self->off($event_ref->{event}, $cb) if $event_ref->{once};
+    if ($event_ref->{once}) {
+        my ($event, $listen_id) = @{$event_ref}{qw(event listen_id)};
+        $self->off($event, $cb, listen_id => $listen_id//'');
+    }
 }
 
-sub _bbe_parse_events {
+sub __bbe_wrap_multiple_events {
     my ($orig, $self, $events, @args) = @_;
     if (ref $events eq 'HASH') {
         $self->$orig($events->{$_}, @args) for keys %$events;
@@ -72,7 +90,7 @@ sub _bbe_parse_events {
     }
 }
 
-sub _bbe_parse_events2 {
+sub ___bbe_wrap_multiple_events2 {
     my ($orig, $self, $other, $events, @args) = @_;
     if (ref $events eq 'HASH') {
         $self->$orig($other, $events->{$_}, @args) for keys %$events;
@@ -86,109 +104,137 @@ sub _bbe_parse_events2 {
     }
 }
 
-around on => \&_bbe_parse_events;
+sub __bbe_parse_ns {
+    my ($event) = @_;
+    my ($ns, $type) = split(':', $event//'', 2);
+    return ($ns//'', $type//'');
+}
+
+sub __bbe_query {
+    my ($ids, $q) = @_;
+    return grep {
+        my $id    = $_;
+        my $match = 1;
+        for my $field (keys %$q) {
+            my $have = $ids->{$id}{$field} // '';
+            my $want = $q->{$field};
+
+            my $type = ref $want;
+            if ($type eq 'ARRAY') {
+                if (none {$_ eq $have} @$want) {
+                    $match = 0;
+                    last;
+                }
+            } else {
+                if ($want ne $have) {
+                    $match = 0;
+                    last;
+                }
+            }
+        }
+        $match;
+    } keys %$ids;
+}
+
+sub __bbe_does_events {
+    my ($obj) = @_;
+    return $obj
+        && blessed($obj)
+        && $obj->DOES(__PACKAGE__);
+}
+
+around on => \&__bbe_wrap_multiple_events;
 sub on {
     my ($self, $event, $cb, %opts) = @_;
-    $self->_bbe_events->{$event}{$cb} = {
+    my ($ns, $type) = __bbe_parse_ns($event);
+    $self->_bbe_events->{__bbe_new_id()} = {
         %opts,
-        cb    => $cb,
-        event => $event,
+        cb   => $cb,
+        ns   => $ns,
+        type => $type,
     };
     return $cb;
 }
 
-around off => \&_bbe_parse_events;
+around off => \&__bbe_wrap_multiple_events;
 sub off {
-    my ($self, $event, $cb) = @_;
-    my @matches = keys %{$self->_bbe_events};
-    # match event and any types under a namespace
-    @matches = grep {/^\Q$event\E(:.*)?$/} @matches if $event;
+    my ($self, $event, $cb, %opts) = @_;
+    my ($ns, $type) = __bbe_parse_ns($event);
 
-    for my $match (@matches) {
-        my $cbs = $self->_bbe_events->{$match};
-        if (defined $cb) {
-            delete $cbs->{$cb};
-        } else {
-            %$cbs = ();
-        }
-        # garbage collect empty hash refs
-        delete $self->_bbe_events->{$match} unless %$cbs;
-    }
+    my @ids = __bbe_query($self->_bbe_events, {
+        %opts,
+        ( cb        => $cb   )x!! $cb,
+        ( ns        => $ns   )x!! $ns,
+        ( type      => $type )x!! $type,
+    });
+    delete @{$self->_bbe_events}{@ids};
 }
 
-around trigger => \&_bbe_parse_events;
+around trigger => \&__bbe_wrap_multiple_events;
 sub trigger {
     my ($self, $event, @args) = @_;
-    my $regex;
-    if (my ($ns) = $event =~ /^(.*?):/) {
-        # if $event is a $ns:$type, match $event and $ns
-        $regex = qr/^(\Q$ns\E|\Q$event\E)$/;
-    } else {
-        $regex = qr/^\Q$event\E$/;
-    }
+    my ($ns, $type) = __bbe_parse_ns($event);
 
-    my @matches = grep {/$regex/} keys %{$self->_bbe_events};
-    for my $match (@matches) {
-        $self->_bbe_trigger($_, @args)
-            for values %{$self->_bbe_events->{$match}//{}};
+    my @ids = __bbe_query($self->_bbe_events, {
+        ns   => [ 'all', $ns                 ],
+        type => [ $type ? ($type, '') : ('') ],
+    });
+
+    for my $id (@ids) {
+        my $event_ref = $self->_bbe_events->{$id};
+        $self->_bbe_trigger($event_ref, $event, @args);
     }
-    # call everything registered on 'all'
-    $self->_bbe_trigger($_, $event, @args)
-        for values %{$self->_bbe_events->{all}//{}};
 }
 
-around once => \&_bbe_parse_events;
+around once => \&__bbe_wrap_multiple_events;
 sub once {
     my ($self, $event, $cb) = @_;
     $self->on($event, $cb, once => 1);
     return $cb;
 }
 
-around listen_to => \&_bbe_parse_events2;
+around listen_to => \&___bbe_wrap_multiple_events2;
 sub listen_to {
     my ($self, $other, $event, $cb, %opts) = @_;
+    confess "Cannot call listen_to on object that does not consume Backbone::Events"
+        if $other and not __bbe_does_events($other);
 
-    $self->_bbe_listening_to->{$other}{$event}{$cb} = [
-        $other,
-        $cb,
-    ];
-    $other->on($event, $cb, %opts);
+    $self->_bbe_listening_to->{__bbe_new_id()} = {
+        %opts,
+        cb       => $cb,
+        event    => $event,
+        other    => $other,
+        other_id => $other->_bbe_id,
+    };
+    $other->on($event, $cb, %opts, listen_id => $self->_bbe_id);
 
     return $cb;
 }
 
-around stop_listening => \&_bbe_parse_events2;
-sub stop_listening { 
+around stop_listening => \&___bbe_wrap_multiple_events2;
+sub stop_listening {
     my ($self, $other, $event, $cb) = @_;
-    my $listening = $self->_bbe_listening_to;
+    my ($ns, $type) = __bbe_parse_ns($event);
+    confess "Cannot call stop_listening on object that does not consume Backbone::Events"
+        if $other and not __bbe_does_events($other);
 
-    my @other_matches = defined $other ? ($other) : keys %$listening;
-    for my $other_match (@other_matches) {
-        my $events = $listening->{$other_match} // {};
+    my $query = {
+        ( cb   => $cb   )x!! $cb,
+        ( ns   => $ns   )x!! $ns,
+        ( type => $type )x!! $type,
+    };
+    $query->{other_id} = $other->_bbe_id if $other;
+    my @ids = __bbe_query($self->_bbe_listening_to, $query);
 
-        my @event_matches = keys %$events;
-        # match event and any types under a namespace
-        @event_matches = grep {/^\Q$event\E(:.*)?$/} @event_matches
-            if defined $event;
-        for my $event_match (@event_matches) {
-            my $cbs = $events->{$event_match};
-
-            for my $cb_match (defined $cb ? ($cb) : keys %$cbs) {
-                my ($other_obj, $cb) = @{$cbs->{$cb_match}//[]};
-                $other_obj->off($event_match, $cb_match);
-                delete $cbs->{$cb_match};
-            }
-
-            # garbage collect empty hash refs
-            delete $events->{$event_match} unless %$cbs;
-        }
-
-        # garbage collect empty hash refs
-        delete $listening->{$other_match} unless %$events;
+    for my $id (@ids) {
+        my $listen_ref = $self->_bbe_listening_to->{$id};
+        my $other_obj  = $listen_ref->{other};
+        my @args       = @{$listen_ref}{qw(event cb)};
+        $other_obj->off(@args, listen_id => $self->_bbe_id);
     }
 }
 
-around listen_to_once => \&_bbe_parse_events2;
+around listen_to_once => \&___bbe_wrap_multiple_events2;
 sub listen_to_once {
     my ($self, $other, $event, $cb) = @_;
     $self->listen_to($other, $event, $cb, once => 1);

@@ -8,11 +8,11 @@ version 0.0.1
 
 # SYNOPSIS
 
-    package EventBus {
+    package MyEventBus {
         use Moo;
         with 'Backbone::Events';
     };
-    my $bus = EventBus->new;
+    my $bus = MyEventBus->new;
 
     $bus->on('event:subtype', \&do_something);
     ...
@@ -20,19 +20,19 @@ version 0.0.1
 
 # METHODS
 
-## on
+## on($event, $callback)
 
-## off
+## off(\[$event\], \[$callback\])
 
-## trigger
+## trigger($event, @args)
 
-## once
+## once($event, $callback)
 
-## listen\_to
+## listen\_to($other, $event, $callback)
 
-## stop\_listening
+## stop\_listening(\[$other\], \[$event\], \[$callback\])
 
-## listen\_to\_once
+## listen\_to\_once($other, $event, $callback)
 
 # SEE ALSO
 
