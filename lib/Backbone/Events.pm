@@ -1,8 +1,6 @@
 package Backbone::Events;
 
-use Scalar::Util qw(weaken);
 use Moo::Role;
-use namespace::autoclean;
 
 has _bbe_events => (
     is      => 'ro',
@@ -14,28 +12,40 @@ has _bbe_listening_to => (
     default => sub { {} },
 );
 
+sub _bbe_trigger {
+    my ($self, $event_ref, @args) = @_;
+    my $cb = $event_ref->{cb};
+
+    $cb->(@args);
+
+    $self->off($event_ref->{event}, $cb) if $event_ref->{once};
+}
+
 sub on {
     my ($self, $event, $cb, %opts) = @_;
-    my $id = $opts{alias} // $cb;
-    $self->_bbe_events->{$event}{$id} = $cb;
-    return $id;
+    $self->_bbe_events->{$event}{$cb} = {
+        %opts,
+        cb    => $cb,
+        event => $event,
+    };
+    return $cb;
 }
 
 sub off {
-    my ($self, $event, $id) = @_;
+    my ($self, $event, $cb) = @_;
     my @matches = keys %{$self->_bbe_events};
     # match event and any types under a namespace
-    @matches    = grep {/^\Q$event\E(:.*)?$/} @matches if $event;
+    @matches = grep {/^\Q$event\E(:.*)?$/} @matches if $event;
 
     for my $match (@matches) {
-        my $ids = $self->_bbe_events->{$match};
-        if (defined $id) {
-            delete $ids->{$id};
+        my $cbs = $self->_bbe_events->{$match};
+        if (defined $cb) {
+            delete $cbs->{$cb};
         } else {
-            %$ids = ();
+            %$cbs = ();
         }
         # garbage collect empty hash refs
-        delete $self->_bbe_events->{$match} unless %$ids;
+        delete $self->_bbe_events->{$match} unless %$cbs;
     }
 }
 
@@ -51,40 +61,34 @@ sub trigger {
 
     my @matches = grep {/$regex/} keys %{$self->_bbe_events};
     for my $match (@matches) {
-        $_->(@args) for values %{$self->_bbe_events->{$match}//{}};
+        $self->_bbe_trigger($_, @args)
+            for values %{$self->_bbe_events->{$match}//{}};
     }
     # call everything registered on 'all'
-    $_->($event, @args) for values %{$self->_bbe_events->{all}//{}};
+    $self->_bbe_trigger($_, $event, @args)
+        for values %{$self->_bbe_events->{all}//{}};
 }
 
 sub once {
-    my ($self, $event, $_cb) = @_;
-    weaken($self);
-
-    my $cb = sub {
-        $self->off($event, $_cb);
-        goto &$_cb;
-    };
-    $self->on($event, $cb, alias => $_cb);
-
-    return $_cb;
+    my ($self, $event, $cb) = @_;
+    $self->on($event, $cb, once => 1);
+    return $cb;
 }
 
 sub listen_to {
     my ($self, $other, $event, $cb, %opts) = @_;
-    my $id = $opts{alias} // $cb;
 
-    $self->_bbe_listening_to->{$other}{$event}{$id} = [
+    $self->_bbe_listening_to->{$other}{$event}{$cb} = [
         $other,
         $cb,
     ];
     $other->on($event, $cb, %opts);
 
-    return $id;
+    return $cb;
 }
 
 sub stop_listening { 
-    my ($self, $other, $event, $id) = @_;
+    my ($self, $other, $event, $cb) = @_;
     my $listening = $self->_bbe_listening_to;
 
     my @other_matches = defined $other ? ($other) : keys %$listening;
@@ -93,19 +97,19 @@ sub stop_listening {
 
         my @event_matches = keys %$events;
         # match event and any types under a namespace
-        @event_matches    = grep {/^\Q$event\E(:.*)?$/} @event_matches
+        @event_matches = grep {/^\Q$event\E(:.*)?$/} @event_matches
             if defined $event;
         for my $event_match (@event_matches) {
-            my $ids = $events->{$event_match};
+            my $cbs = $events->{$event_match};
 
-            for my $id_match (defined $id ? ($id) : keys %$ids) {
-                my ($other_obj, $cb) = @{$ids->{$id_match}//[]};
-                $other_obj->off($event_match, $id_match);
-                delete $ids->{$id_match};
+            for my $cb_match (defined $cb ? ($cb) : keys %$cbs) {
+                my ($other_obj, $cb) = @{$cbs->{$cb_match}//[]};
+                $other_obj->off($event_match, $cb_match);
+                delete $cbs->{$cb_match};
             }
 
             # garbage collect empty hash refs
-            delete $events->{$event_match} unless %$ids;
+            delete $events->{$event_match} unless %$cbs;
         }
 
         # garbage collect empty hash refs
@@ -114,16 +118,9 @@ sub stop_listening {
 }
 
 sub listen_to_once {
-    my ($self, $other, $event, $_cb) = @_;
-    weaken($self);
-
-    my $cb = sub {
-        $self->stop_listening($other, $event, $_cb);
-        goto &$_cb;
-    };
-    $self->listen_to($other, $event, $cb, alias => $_cb);
-
-    return $_cb;
+    my ($self, $other, $event, $cb) = @_;
+    $self->listen_to($other, $event, $cb, once => 1);
+    return $cb;
 }
 
 1;

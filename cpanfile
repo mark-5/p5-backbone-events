@@ -1,6 +1,5 @@
 requires 'namespace::autoclean', '0.16';
 requires 'Moo::Role';
-requires 'Scalar::Util';
 
 on develop => sub {
     requires 'Dist::Zilla::Plugin::ExtraTests';
