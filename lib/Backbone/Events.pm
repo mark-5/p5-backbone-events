@@ -1,6 +1,43 @@
 package Backbone::Events;
 
 use Moo::Role;
+use namespace::autoclean -also => qr/^_bbe_parse_events/;
+
+# ABSTRACT: a port of the Backbone.js event API
+
+=head1 SYNOPSIS
+
+    package EventBus {
+        use Moo;
+        with 'Backbone::Events';
+    };
+    my $bus = EventBus->new;
+
+    $bus->on('event:subtype', \&do_something);
+    ...
+    $bus->trigger('event:subtype', qw(args for callback))
+
+=head1 METHODS
+
+=head2 on
+
+=head2 off
+
+=head2 trigger
+
+=head2 once
+
+=head2 listen_to
+
+=head2 stop_listening
+
+=head2 listen_to_once
+
+=head1 SEE ALSO
+
+L<http://backbonejs.org/#Events>
+
+=cut
 
 has _bbe_events => (
     is      => 'ro',
@@ -21,6 +58,35 @@ sub _bbe_trigger {
     $self->off($event_ref->{event}, $cb) if $event_ref->{once};
 }
 
+sub _bbe_parse_events {
+    my ($orig, $self, $events, @args) = @_;
+    if (ref $events eq 'HASH') {
+        $self->$orig($events->{$_}, @args) for keys %$events;
+    } elsif ($events and $events =~ /\s+/) {
+        my $result;
+        $result = $self->$orig($_, @args) for split /\s+/, $events;
+        # return last result
+        return $result;
+    } else {
+        return $self->$orig($events, @args);
+    }
+}
+
+sub _bbe_parse_events2 {
+    my ($orig, $self, $other, $events, @args) = @_;
+    if (ref $events eq 'HASH') {
+        $self->$orig($other, $events->{$_}, @args) for keys %$events;
+    } elsif ($events and $events =~ /\s+/) {
+        my $result;
+        $result = $self->$orig($other, $_, @args) for split /\s+/, $events;
+        # return last result
+        return $result;
+    } else {
+        return $self->$orig($other, $events, @args);
+    }
+}
+
+around on => \&_bbe_parse_events;
 sub on {
     my ($self, $event, $cb, %opts) = @_;
     $self->_bbe_events->{$event}{$cb} = {
@@ -31,6 +97,7 @@ sub on {
     return $cb;
 }
 
+around off => \&_bbe_parse_events;
 sub off {
     my ($self, $event, $cb) = @_;
     my @matches = keys %{$self->_bbe_events};
@@ -49,6 +116,7 @@ sub off {
     }
 }
 
+around trigger => \&_bbe_parse_events;
 sub trigger {
     my ($self, $event, @args) = @_;
     my $regex;
@@ -69,12 +137,14 @@ sub trigger {
         for values %{$self->_bbe_events->{all}//{}};
 }
 
+around once => \&_bbe_parse_events;
 sub once {
     my ($self, $event, $cb) = @_;
     $self->on($event, $cb, once => 1);
     return $cb;
 }
 
+around listen_to => \&_bbe_parse_events2;
 sub listen_to {
     my ($self, $other, $event, $cb, %opts) = @_;
 
@@ -87,6 +157,7 @@ sub listen_to {
     return $cb;
 }
 
+around stop_listening => \&_bbe_parse_events2;
 sub stop_listening { 
     my ($self, $other, $event, $cb) = @_;
     my $listening = $self->_bbe_listening_to;
@@ -117,6 +188,7 @@ sub stop_listening {
     }
 }
 
+around listen_to_once => \&_bbe_parse_events2;
 sub listen_to_once {
     my ($self, $other, $event, $cb) = @_;
     $self->listen_to($other, $event, $cb, once => 1);
