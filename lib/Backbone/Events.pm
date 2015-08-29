@@ -199,12 +199,15 @@ sub listen_to {
     confess "Cannot call listen_to on object that does not consume Backbone::Events"
         if $other and not __bbe_does_events($other);
 
+    my ($ns, $type) = __bbe_parse_ns($event);
     $self->_bbe_listening_to->{__bbe_new_id()} = {
         %opts,
         cb       => $cb,
         event    => $event,
+        ns       => $ns,
         other    => $other,
         other_id => $other->_bbe_id,
+        type     => $type,
     };
     $other->on($event, $cb, %opts, listen_id => $self->_bbe_id);
 
@@ -232,6 +235,7 @@ sub stop_listening {
         my @args       = @{$listen_ref}{qw(event cb)};
         $other_obj->off(@args, listen_id => $self->_bbe_id);
     }
+    delete @{$self->_bbe_listening_to}{@ids};
 }
 
 around listen_to_once => \&___bbe_wrap_multiple_events2;
