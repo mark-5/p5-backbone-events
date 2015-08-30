@@ -10,31 +10,78 @@ use namespace::autoclean -also => qr/^__bbe_/;
 
 =head1 SYNOPSIS
 
-    package MyEventBus {
+    package MyProducer {
         use Moo;
         with 'Backbone::Events';
     };
-    my $bus = MyEventBus->new;
+    my $pub = MyProducer->new;
 
-    $bus->on('event:subtype', \&do_something);
+    package MySubscriber {
+        use Moo;
+        with 'Backbone::Events';
+    };
+    my $sub = MySubscriber->new;
+
+    $sub->listen_to($pub, 'some-event', sub { ... })
     ...
-    $bus->trigger('event:subtype', qw(args for callback))
+    $pub->trigger('some-event', qw(args for callback));
+
+=head1 DESCRIPTION
+
+Backbone::Events is a Moo::Role which provides a simple interface for binding
+and triggering custom named events. Events do not have to be declared before
+they are bound, and may take passed arguments.
+
+Events can be optionally namespaced by prepending the event with the
+namespace: '$namespace:$event'.
 
 =head1 METHODS
 
 =head2 on($event, $callback)
 
+Bind a callback to an object.
+
+Callbacks bound to the special 'all' event will be triggered when any event
+occurs, and are passed the name of the event as the first argument.
+
+Returns the callback that was passed. This is mainly so anonymous functions
+can be returned, and later passed back to 'off'.
+
 =head2 off([$event], [$callback])
+
+Remove a previously-bound callback from an object.
 
 =head2 trigger($event, @args)
 
+Trigger callbacks for the given event.
+
 =head2 once($event, $callback)
+
+Just like 'on', but causes the bound callback to fire only once before being
+removed.
+
+Returns the callback that was passed. This is mainly so anonymous functions
+can be returned, and later passed back to 'off'.
 
 =head2 listen_to($other, $event, $callback)
 
+Tell an object to listen to a particular event on an other object.
+The other object must consume the Backbone::Events role.
+
+Returns the callback that was passed. This is mainly so anonymous functions
+can be returned, and later passed back to 'stop_listening'.
+
 =head2 stop_listening([$other], [$event], [$callback])
 
+Tell an object to stop listening to events.
+
 =head2 listen_to_once($other, $event, $callback)
+
+Just like 'listen_to', but causes the bound callback to fire only once before
+being removed.
+
+Returns the callback that was passed. This is mainly so anonymous functions
+can be returned, and later passed back to 'stop_listening'.
 
 =head1 SEE ALSO
 

@@ -1,4 +1,5 @@
 requires 'namespace::autoclean', '0.16';
+requires 'perl', 'v5.10.1';
 requires 'Carp';
 requires 'List::MoreUtils';
 requires 'Moo::Role';
@@ -11,7 +12,6 @@ on develop => sub {
     requires 'Dist::Zilla::PluginBundle::Basic';
     requires 'Pod::Markdown';
     requires 'Test::Pod';
-    requires 'Test::Strict';
 };
 
 on test => sub {
@@ -21,4 +21,5 @@ on test => sub {
     requires 'Moo';
     requires 'Test::LeakTrace';
     requires 'Test::More';
+    requires 'Test::Strict';
 };
