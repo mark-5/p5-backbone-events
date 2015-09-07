@@ -7,7 +7,7 @@ use Test::Backbone::Events::Utils;
 my $handler = test_handler();
 
 my %triggered;
-$handler->on('ns',      sub { $triggered{ns}++   });
+$handler->on('ns:all',  sub { $triggered{ns}++   });
 $handler->on('ns:type', sub { $triggered{type}++ });
 
 $handler->trigger('ns:type');
@@ -20,8 +20,8 @@ ok !$triggered{type}, 'did not trigger type for event with matching namespace bu
 
 %triggered = ();
 $handler->trigger('ns');
-is $triggered{ns}, 1, 'triggered namespace for event with no type';
-ok !$triggered{type}, 'did not trigger type for event with matching namespace but no type';
+ok !$triggered{ns}, 'did not trigger all types for event with no namespace';
+ok !$triggered{type}, 'did not trigger type for event with matching type but no namespace';
 
 %triggered = ();
 $handler->trigger('different-ns:type');

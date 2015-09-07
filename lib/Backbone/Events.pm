@@ -1,7 +1,7 @@
 package Backbone::Events;
 
 use Carp qw(confess);
-use List::MoreUtils qw(none);
+use List::MoreUtils qw(any none);
 use Scalar::Util qw(blessed);
 use Moo::Role;
 use namespace::autoclean -also => qr/^__/;
@@ -111,7 +111,7 @@ sub _bbe_trigger {
     my ($self, $event_ref, $event, @args) = @_;
     my $cb = $event_ref->{cb};
 
-    if ($event_ref->{ns} eq 'all') {
+    if (any {$_ eq 'all'} @{$event_ref}{qw(ns type)}) {
         $cb->($event, @args);
     } else {
         $cb->(@args);
@@ -151,10 +151,19 @@ sub ___wrap_multiple_events2 {
     }
 }
 
-sub __parse_ns {
+sub __parse_event {
     my ($event) = @_;
-    my ($ns, $type) = split(':', $event//'', 2);
-    return ($ns//'', $type//'');
+    # handle two edge cases
+    # if passed undef, return empty strings so comparisons don't warn
+    return ( '',    ''    ) unless defined $event;
+    # and the 'all' event should get the 'all' namespace
+    return ( 'all', 'all' ) if $event eq 'all';
+
+    if (my ($ns, $type) = $event =~ /(.*):(.*)/) {
+        return ($ns, $type);
+    } else {
+        return ('', $event);
+    }
 }
 
 sub __query {
@@ -193,7 +202,7 @@ sub __does_events {
 around on => \&__wrap_multiple_events;
 sub on {
     my ($self, $event, $cb, %opts) = @_;
-    my ($ns, $type) = __parse_ns($event);
+    my ($ns, $type) = __parse_event($event);
     $self->_bbe_events->{__new_id()} = {
         %opts,
         cb   => $cb,
@@ -206,7 +215,7 @@ sub on {
 around off => \&__wrap_multiple_events;
 sub off {
     my ($self, $event, $cb, %opts) = @_;
-    my ($ns, $type) = __parse_ns($event);
+    my ($ns, $type) = __parse_event($event);
 
     my @ids = __query($self->_bbe_events, {
         %opts,
@@ -220,11 +229,11 @@ sub off {
 around trigger => \&__wrap_multiple_events;
 sub trigger {
     my ($self, $event, @args) = @_;
-    my ($ns, $type) = __parse_ns($event);
+    my ($ns, $type) = __parse_event($event);
 
     my @ids = __query($self->_bbe_events, {
-        ns   => [ 'all', $ns                 ],
-        type => [ $type ? ($type, '') : ('') ],
+        ns   => [ 'all', $ns   ],
+        type => [ 'all', $type ],
     });
 
     for my $id (@ids) {
@@ -246,7 +255,7 @@ sub listen_to {
     confess "Cannot call listen_to on object that does not consume Backbone::Events"
         if not __does_events($other);
 
-    my ($ns, $type) = __parse_ns($event);
+    my ($ns, $type) = __parse_event($event);
     $self->_bbe_listening_to->{__new_id()} = {
         %opts,
         cb       => $cb,
@@ -264,7 +273,7 @@ sub listen_to {
 around stop_listening => \&___wrap_multiple_events2;
 sub stop_listening {
     my ($self, $other, $event, $cb) = @_;
-    my ($ns, $type) = __parse_ns($event);
+    my ($ns, $type) = __parse_event($event);
     confess "Cannot call stop_listening on object that does not consume Backbone::Events"
         if $other and not __does_events($other);
 
