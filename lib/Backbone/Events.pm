@@ -4,7 +4,7 @@ use Carp qw(confess);
 use List::MoreUtils qw(none);
 use Scalar::Util qw(blessed);
 use Moo::Role;
-use namespace::autoclean -also => qr/^__bbe_/;
+use namespace::autoclean -also => qr/^__/;
 
 # ABSTRACT: a port of the Backbone.js event API
 
@@ -96,7 +96,7 @@ has _bbe_events => (
 
 has _bbe_id => (
     is      => 'ro',
-    default => sub { __bbe_new_id() },
+    default => sub { __new_id() },
 );
 
 has _bbe_listening_to => (
@@ -104,8 +104,8 @@ has _bbe_listening_to => (
     default => sub { {} },
 );
 
-our $__bbe_last_id;
-sub __bbe_new_id { ++$__bbe_last_id }
+our $__last_id;
+sub __new_id { ++$__last_id }
 
 sub _bbe_trigger {
     my ($self, $event_ref, $event, @args) = @_;
@@ -123,7 +123,7 @@ sub _bbe_trigger {
     }
 }
 
-sub __bbe_wrap_multiple_events {
+sub __wrap_multiple_events {
     my ($orig, $self, $events, @args) = @_;
     if (ref $events eq 'HASH') {
         $self->$orig($_, $events->{$_}, @args) for keys %$events;
@@ -137,7 +137,7 @@ sub __bbe_wrap_multiple_events {
     }
 }
 
-sub ___bbe_wrap_multiple_events2 {
+sub ___wrap_multiple_events2 {
     my ($orig, $self, $other, $events, @args) = @_;
     if (ref $events eq 'HASH') {
         $self->$orig($other, $_, $events->{$_}, @args) for keys %$events;
@@ -151,13 +151,13 @@ sub ___bbe_wrap_multiple_events2 {
     }
 }
 
-sub __bbe_parse_ns {
+sub __parse_ns {
     my ($event) = @_;
     my ($ns, $type) = split(':', $event//'', 2);
     return ($ns//'', $type//'');
 }
 
-sub __bbe_query {
+sub __query {
     my ($ids, $q) = @_;
     return grep {
         my $id    = $_;
@@ -183,18 +183,18 @@ sub __bbe_query {
     } keys %$ids;
 }
 
-sub __bbe_does_events {
+sub __does_events {
     my ($obj) = @_;
     return $obj
         && blessed($obj)
         && $obj->DOES(__PACKAGE__);
 }
 
-around on => \&__bbe_wrap_multiple_events;
+around on => \&__wrap_multiple_events;
 sub on {
     my ($self, $event, $cb, %opts) = @_;
-    my ($ns, $type) = __bbe_parse_ns($event);
-    $self->_bbe_events->{__bbe_new_id()} = {
+    my ($ns, $type) = __parse_ns($event);
+    $self->_bbe_events->{__new_id()} = {
         %opts,
         cb   => $cb,
         ns   => $ns,
@@ -203,26 +203,26 @@ sub on {
     return $cb;
 }
 
-around off => \&__bbe_wrap_multiple_events;
+around off => \&__wrap_multiple_events;
 sub off {
     my ($self, $event, $cb, %opts) = @_;
-    my ($ns, $type) = __bbe_parse_ns($event);
+    my ($ns, $type) = __parse_ns($event);
 
-    my @ids = __bbe_query($self->_bbe_events, {
+    my @ids = __query($self->_bbe_events, {
         %opts,
-        ( cb        => $cb   )x!! $cb,
-        ( ns        => $ns   )x!! $ns,
-        ( type      => $type )x!! $type,
+        ( cb   => $cb   )x!! $cb,
+        ( ns   => $ns   )x!! $ns,
+        ( type => $type )x!! $type,
     });
     delete @{$self->_bbe_events}{@ids};
 }
 
-around trigger => \&__bbe_wrap_multiple_events;
+around trigger => \&__wrap_multiple_events;
 sub trigger {
     my ($self, $event, @args) = @_;
-    my ($ns, $type) = __bbe_parse_ns($event);
+    my ($ns, $type) = __parse_ns($event);
 
-    my @ids = __bbe_query($self->_bbe_events, {
+    my @ids = __query($self->_bbe_events, {
         ns   => [ 'all', $ns                 ],
         type => [ $type ? ($type, '') : ('') ],
     });
@@ -233,21 +233,21 @@ sub trigger {
     }
 }
 
-around once => \&__bbe_wrap_multiple_events;
+around once => \&__wrap_multiple_events;
 sub once {
     my ($self, $event, $cb) = @_;
     $self->on($event, $cb, once => 1);
     return $cb;
 }
 
-around listen_to => \&___bbe_wrap_multiple_events2;
+around listen_to => \&___wrap_multiple_events2;
 sub listen_to {
     my ($self, $other, $event, $cb, %opts) = @_;
     confess "Cannot call listen_to on object that does not consume Backbone::Events"
-        if $other and not __bbe_does_events($other);
+        if not __does_events($other);
 
-    my ($ns, $type) = __bbe_parse_ns($event);
-    $self->_bbe_listening_to->{__bbe_new_id()} = {
+    my ($ns, $type) = __parse_ns($event);
+    $self->_bbe_listening_to->{__new_id()} = {
         %opts,
         cb       => $cb,
         event    => $event,
@@ -261,12 +261,12 @@ sub listen_to {
     return $cb;
 }
 
-around stop_listening => \&___bbe_wrap_multiple_events2;
+around stop_listening => \&___wrap_multiple_events2;
 sub stop_listening {
     my ($self, $other, $event, $cb) = @_;
-    my ($ns, $type) = __bbe_parse_ns($event);
+    my ($ns, $type) = __parse_ns($event);
     confess "Cannot call stop_listening on object that does not consume Backbone::Events"
-        if $other and not __bbe_does_events($other);
+        if $other and not __does_events($other);
 
     my $query = {
         ( cb   => $cb   )x!! $cb,
@@ -274,7 +274,7 @@ sub stop_listening {
         ( type => $type )x!! $type,
     };
     $query->{other_id} = $other->_bbe_id if $other;
-    my @ids = __bbe_query($self->_bbe_listening_to, $query);
+    my @ids = __query($self->_bbe_listening_to, $query);
 
     for my $id (@ids) {
         my $listen_ref = $self->_bbe_listening_to->{$id};
@@ -285,7 +285,7 @@ sub stop_listening {
     delete @{$self->_bbe_listening_to}{@ids};
 }
 
-around listen_to_once => \&___bbe_wrap_multiple_events2;
+around listen_to_once => \&___wrap_multiple_events2;
 sub listen_to_once {
     my ($self, $other, $event, $cb) = @_;
     $self->listen_to($other, $event, $cb, once => 1);

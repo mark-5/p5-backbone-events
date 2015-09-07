@@ -20,6 +20,7 @@ on test => sub {
     requires 'Exporter';
     requires 'FindBin::libs';
     requires 'Moo';
+    requires 'Test::Fatal';
     requires 'Test::LeakTrace';
     requires 'Test::More';
     requires 'Test::Strict';

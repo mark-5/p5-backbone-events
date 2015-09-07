@@ -1,6 +1,7 @@
 use strict;
 use warnings;
 use FindBin::libs;
+use Test::Fatal qw(dies_ok);
 use Test::More;
 use Test::Backbone::Events::Utils;
 
@@ -74,5 +75,15 @@ $listener->listen_to($handler, 'different-event', $cb);
 $listener->stop_listening(undef, 'test-event', $cb);
 $handler->trigger('test-event different-event');
 is $count, 1, 'one callback triggered after listening stopped for event with callback registered for two events';
+
+{
+    my $listener = test_handler();
+    dies_ok { $listener->stop_listening(1, 'event', sub {}) };
+    dies_ok { $listener->stop_listening({}, 'event', sub {}) };
+
+    my $obj = bless {}, __PACKAGE__;
+    dies_ok { $listener->stop_listening($obj, 'event', sub {}) };
+}
+
 
 done_testing;
