@@ -4,7 +4,7 @@ Backbone::Events - a port of the Backbone.js event API
 
 # VERSION
 
-version 0.0.2
+version 0.0.3
 
 # SYNOPSIS
 
